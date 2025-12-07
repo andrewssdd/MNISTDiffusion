@@ -12,6 +12,8 @@ def parse_args():
     parser.add_argument('--n_samples', type=int, help='define sampling amounts', default=36)
     parser.add_argument('--model_base_dim', type=int, help='base dim of Unet', default=64)
     parser.add_argument('--timesteps', type=int, help='sampling steps of DDPM', default=1000)
+    parser.add_argument('--ddim_steps', type=int, help='sampling steps of DDIM', default=50)
+    parser.add_argument('--sampler', type=str, help='sampler type', default='ddpm', choices=['ddpm', 'ddim'])
     parser.add_argument('--no_clip', action='store_true', help='set to normal sampling method without clip x_0 which could yield unstable samples')
     parser.add_argument('--cpu', action='store_true', help='use cpu for sampling')
     parser.add_argument('--output_file', type=str, help='output file name', default='sampled_images.png')
@@ -24,6 +26,7 @@ def main(args):
     # Initialize the model structure
     model = MNISTDiffusion(
         timesteps=args.timesteps,
+        ddim_timesteps=args.ddim_steps,
         image_size=28,
         in_channels=1,
         base_dim=args.model_base_dim,
@@ -52,13 +55,18 @@ def main(args):
 
     model_ema.eval()
 
-    print(f"Sampling {args.n_samples} images...")
-    # The sampling is done using the module within the EMA wrapper
-    samples = model_ema.module.sampling(
-        args.n_samples, 
-        clipped_reverse_diffusion=not args.no_clip, 
-        device=device
-    )
+    print(f"Sampling {args.n_samples} images using {args.sampler} sampler...")
+    if args.sampler == 'ddpm':
+        samples = model_ema.module.sampling(
+            args.n_samples, 
+            clipped_reverse_diffusion=not args.no_clip, 
+            device=device
+        )
+    elif args.sampler == 'ddim':
+        samples = model_ema.module.ddim_sampling(
+            args.n_samples, 
+            device=device
+        )
 
     # Ensure the results directory exists
     os.makedirs("results", exist_ok=True)

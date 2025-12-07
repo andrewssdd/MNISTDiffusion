@@ -5,11 +5,12 @@ from unet import Unet
 from tqdm import tqdm
 
 class MNISTDiffusion(nn.Module):
-    def __init__(self,image_size,in_channels,time_embedding_dim=256,timesteps=1000,base_dim=32,dim_mults= [1, 2, 4, 8]):
+    def __init__(self,image_size,in_channels,time_embedding_dim=256,timesteps=1000,ddim_timesteps=100,base_dim=32,dim_mults= [1, 2, 4, 8]):
         super().__init__()
         self.timesteps=timesteps
         self.in_channels=in_channels
         self.image_size=image_size
+        self.ddim_timesteps=ddim_timesteps
 
         betas=self._cosine_variance_schedule(timesteps)
 
@@ -47,7 +48,31 @@ class MNISTDiffusion(nn.Module):
         x_t=(x_t+1.)/2. #[-1,1] to [0,1]
 
         return x_t
-    
+
+    @torch.no_grad()
+    def ddim_sampling(self, n_samples, device="cuda"):
+        x_t = torch.randn((n_samples, self.in_channels, self.image_size, self.image_size)).to(device)
+        
+        # times is [999, 989, ..., 0]
+        times = torch.linspace(self.timesteps - 1, 0, self.ddim_timesteps).long()
+        
+        # FIX 1: Iterate forward through the descending times array
+        for i in tqdm(range(self.ddim_timesteps), desc="DDIM Sampling"):
+            time = times[i]
+            
+            # Look ahead for the next step (which is lower in time)
+            # If we are at the last step, target is -1 (which handles the final clean image calc)
+            prev_time = times[i + 1] if i < self.ddim_timesteps - 1 else -1
+            
+            t = torch.full((n_samples,), time, device=device, dtype=torch.long)
+            # Handle the case where prev_time is -1 (scalar) vs a tensor
+            prev_t = torch.full((n_samples,), prev_time, device=device, dtype=torch.long)
+
+            x_t = self._ddim_reverse_diffusion(x_t, t, prev_t)
+            
+        x_t = (x_t + 1.) / 2.
+        return x_t
+
     def _cosine_variance_schedule(self,timesteps,epsilon= 0.008):
         steps=torch.linspace(0,timesteps,steps=timesteps+1,dtype=torch.float32)
         f_t=torch.cos(((steps/timesteps+epsilon)/(1.0+epsilon))*math.pi*0.5)**2
@@ -85,7 +110,6 @@ class MNISTDiffusion(nn.Module):
 
         return mean+std*noise 
 
-
     @torch.no_grad()
     def _reverse_diffusion_with_clip(self,x_t,t,noise): 
         '''
@@ -112,4 +136,31 @@ class MNISTDiffusion(nn.Module):
             std=0.0
 
         return mean+std*noise 
-    
+
+
+    @torch.no_grad()
+    def _ddim_reverse_diffusion(self, x_t, t, prev_t):
+        pred = self.model(x_t, t)
+
+        alpha_t_cumprod = self.alphas_cumprod.gather(-1, t).reshape(x_t.shape[0], 1, 1, 1)
+        
+        # Calculate alpha_prev
+        # If prev_t is -1 (meaning we are going to t=0), cumulative alpha is 1.0
+        alpha_t_cumprod_prev = torch.ones_like(alpha_t_cumprod)
+        prev_t_positive_mask = prev_t >= 0
+        if prev_t_positive_mask.any():
+            # Only gather valid indices
+            valid_prev_t = prev_t[prev_t_positive_mask]
+            alpha_t_cumprod_prev[prev_t_positive_mask] = self.alphas_cumprod.gather(-1, valid_prev_t).reshape(-1, 1, 1, 1)
+
+        # Reconstruct x_0
+        x_0_pred = torch.sqrt(1. / alpha_t_cumprod) * x_t - torch.sqrt(1. / alpha_t_cumprod - 1.) * pred
+        
+        # Clip x_0 prediction for stability
+        x_0_pred.clamp_(-1., 1.)
+        
+        # DDIM Update direction
+        # "std" is 0 in DDIM, so we only use the deterministic path
+        x_t_minus_1 = torch.sqrt(alpha_t_cumprod_prev) * x_0_pred + torch.sqrt(1 - alpha_t_cumprod_prev) * pred
+        
+        return x_t_minus_1
