@@ -14,6 +14,13 @@ python train_mnist.py
 ```
 Feel free to tuning training parameters, type `python train_mnist.py -h` to get help message of arguments.
 
+## Sampling
+Load a model checkpoint created previously
+```bash
+python sample.py --ckpt results/steps_00013601.pt --n_samples 16 --output_file my_samples.png
+```
+
+
 ## Reference
 A neat blog explains how diffusion model works(must read!): https://lilianweng.github.io/posts/2021-07-11-diffusion-models/
 
