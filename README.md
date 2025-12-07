@@ -20,6 +20,11 @@ Load a model checkpoint created previously
 python sample.py --ckpt results/steps_00013601.pt --n_samples 16 --output_file my_samples.png
 ```
 
+Use DDIM sampler (Faster)
+```bash
+python sample.py --ckpt results/steps_00013601.pt --n_samples 16 --sampler ddim --output_file my_samples.png
+```
+
 
 ## Reference
 A neat blog explains how diffusion model works(must read!): https://lilianweng.github.io/posts/2021-07-11-diffusion-models/
