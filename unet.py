@@ -123,7 +123,7 @@ class Unet(nn.Module):
     '''
     simple unet design without attention
     '''
-    def __init__(self,timesteps,time_embedding_dim,in_channels=3,out_channels=2,base_dim=32,dim_mults=[2,4,8,16]):
+    def __init__(self,timesteps,time_embedding_dim,in_channels=3,out_channels=2,base_dim=32,dim_mults=[2,4,8,16],n_classes=10):
         super().__init__()
         assert isinstance(dim_mults,(list,tuple))
         assert base_dim%2==0 
@@ -132,6 +132,7 @@ class Unet(nn.Module):
 
         self.init_conv=ConvBnSiLu(in_channels,base_dim,3,1,1)
         self.time_embedding=nn.Embedding(timesteps,time_embedding_dim)
+        self.class_embedding=nn.Embedding(n_classes,time_embedding_dim)
 
         self.encoder_blocks=nn.ModuleList([EncoderBlock(c[0],c[1],time_embedding_dim) for c in channels])
         self.decoder_blocks=nn.ModuleList([DecoderBlock(c[1],c[0],time_embedding_dim) for c in channels[::-1]])
@@ -141,10 +142,13 @@ class Unet(nn.Module):
 
         self.final_conv=nn.Conv2d(in_channels=channels[0][0]//2,out_channels=out_channels,kernel_size=1)
 
-    def forward(self,x,t=None):
+    def forward(self,x,t=None,target=None):
         x=self.init_conv(x)
         if t is not None:
             t=self.time_embedding(t)
+            if target is not None:
+                t += self.class_embedding(target)
+
         encoder_shortcuts=[]
         for encoder_block in self.encoder_blocks:
             x,x_shortcut=encoder_block(x,t)
@@ -169,6 +173,7 @@ class Unet(nn.Module):
 if __name__=="__main__":
     x=torch.randn(3,3,224,224)
     t=torch.randint(0,1000,(3,))
+    target=torch.randint(0,10,(3,))
     model=Unet(1000,128)
-    y=model(x,t)
+    y=model(x,t,target)
     print(y.shape)

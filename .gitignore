@@ -3,3 +3,4 @@ results/
 *.pyc
 __pycache__/
 mnist_data/
+.venv/

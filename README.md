@@ -1,7 +1,11 @@
 # MNIST Diffusion
-![60 epochs training from scratch](assets/demo.gif "60 epochs training from scratch")
+![50 epochs training from scratch](assets/demo.gif "50 epochs training from scratch")
 
-Only simple depthwise convolutions, shorcuts and naive timestep embedding, there you have it! A fully functional denosing diffusion probabilistic model while keeps ultra light weight **4.55MB** (the checkpoint has 9.1MB but with ema model double the size).
+A lightweight PyTorch implementation denoising diffusion on NMIST handwritten digits. Supports:
+- DDPM (1000 steps) and DDIM (Fast, 50 steps) samplers.
+- Classifier-Free Guidance (CFG) for generating specific digits.
+- Swappable backbones (UNet & DiT/Transformer).
+
 
 ## Training
 Install packages
