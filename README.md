@@ -27,6 +27,10 @@ Feel free to tuning training parameters, type `python train_mnist.py -h` to get 
 ## Transformer model
 The model breaks the input image into patches. The patch size is very important. If it is too large, the training would never work. Patch size of 2 is a good starting point for MNIST.
 
+## Trainer
+Supports Denoising simulation and [rectified flow](https://arxiv.org/abs/2209.03003). Rectified flow learns a straight-line velocity field to the image and converges faster.
+
+
 ## Sampling
 Load a model checkpoint created previously
 ```bash

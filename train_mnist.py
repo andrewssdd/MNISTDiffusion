@@ -53,6 +53,7 @@ def parse_args():
     parser.add_argument('--cfg_scale',type=float,default=2.0)
     parser.add_argument('--n_classes',type=int,default=11)
     parser.add_argument('--model_type',type=str,default='unet',choices=['unet', 'transformer'],help='Model architecture: unet or transformer')
+    parser.add_argument('--trainer',type=str,default='ddpm',choices=['ddpm', 'rectified_flow'],help='Training method for diffusion model')
 
     args = parser.parse_args()
 
@@ -69,7 +70,8 @@ def main(args):
                 dim_mults=[2,4],
                 n_classes=args.n_classes,
                 uncond_prob=args.uncond_prob,
-                model_type=args.model_type).to(device)
+                model_type=args.model_type,
+                diffusion_type=args.trainer).to(device)
 
     #torchvision ema setting
     #https://github.com/pytorch/vision/blob/main/references/classification/train.py#L317
@@ -109,7 +111,12 @@ def main(args):
             image=image.to(device)
             target=target.to(device)
             pred=model(image,noise,target)
-            loss=loss_fn(pred,noise)
+            
+            if args.trainer == 'rectified_flow':
+                loss=loss_fn(pred, noise - image)
+            else:
+                loss=loss_fn(pred,noise)
+            
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
@@ -129,7 +136,9 @@ def main(args):
         # generate samples
         model_ema.eval()
         labels = [t for t in targets for _ in range(args.n_samples_per_target)]
-        if args.sampler == 'ddpm':
+        if args.trainer == 'rectified_flow':
+            samples=model_ema.module.sampling(len(labels), labels,args.cfg_scale,device=device)
+        elif args.sampler == 'ddpm':
             samples=model_ema.module.sampling(len(labels), labels,args.cfg_scale,clipped_reverse_diffusion=not args.no_clip,device=device)
         elif args.sampler == 'ddim':
             samples=model_ema.module.ddim_sampling(len(labels), labels,args.cfg_scale,device=device)

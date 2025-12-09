@@ -6,7 +6,7 @@ from transformer import Transformer
 from tqdm import tqdm
 
 class MNISTDiffusion(nn.Module):
-    def __init__(self,image_size,in_channels,n_classes=11,time_embedding_dim=256,timesteps=1000,ddim_timesteps=100,base_dim=32,dim_mults= [1, 2, 4, 8],uncond_prob=0.1, model_type="unet"):
+    def __init__(self,image_size,in_channels,n_classes=11,time_embedding_dim=256,timesteps=1000,ddim_timesteps=100,base_dim=32,dim_mults= [1, 2, 4, 8],uncond_prob=0.1, model_type="unet", diffusion_type="ddpm"):
         super().__init__()
         self.timesteps=timesteps
         self.in_channels=in_channels
@@ -14,6 +14,7 @@ class MNISTDiffusion(nn.Module):
         self.ddim_timesteps=ddim_timesteps
         self.n_classes=n_classes
         self.uncond_prob=uncond_prob
+        self.diffusion_type = diffusion_type
 
         betas=self._cosine_variance_schedule(timesteps)
 
@@ -34,6 +35,9 @@ class MNISTDiffusion(nn.Module):
             raise ValueError(f"Unknown model_type: {model_type}")
 
     def forward(self,x,noise,target):
+        if self.diffusion_type == "rectified_flow":
+            return self._forward_rectified_flow(x, noise, target)
+
         # x:NCHW
         t=torch.randint(0,self.timesteps,(x.shape[0],)).to(x.device)
         x_t=self._forward_diffusion(x,t,noise)
@@ -45,8 +49,31 @@ class MNISTDiffusion(nn.Module):
 
         return pred_noise
 
+    def _forward_rectified_flow(self, x, noise, target):
+        # Sample t uniform [0, timesteps-1]
+        t = torch.randint(0, self.timesteps, (x.shape[0],)).to(x.device)
+        
+        # t_float in [0, 1]
+        t_float = t.float() / (self.timesteps - 1)
+        t_float = t_float.view(-1, 1, 1, 1)
+
+        # Interpolation: x_t = t * noise + (1 - t) * x
+        # t=0 -> x (data), t=1 -> noise
+        x_t = t_float * noise + (1 - t_float) * x
+
+        # CFG
+        target = target if torch.rand(1) > self.uncond_prob else torch.tensor(self.n_classes-1).to(target.device)
+
+        # Model predicts velocity v = noise - x
+        pred_v = self.model(x_t, t, target)
+        
+        return pred_v
+
     @torch.no_grad()
     def sampling(self,n_samples,target_label,cfg_scale,clipped_reverse_diffusion=True,device="cuda"):
+        if self.diffusion_type == "rectified_flow":
+            return self.sample_rectified_flow(n_samples, target_label, cfg_scale, device)
+
         x_t=torch.randn((n_samples,self.in_channels,self.image_size,self.image_size)).to(device)
         if type(target_label) is int:
             target_label=torch.tensor([target_label for _ in range(n_samples)]).to(device)
@@ -64,6 +91,43 @@ class MNISTDiffusion(nn.Module):
 
         x_t=(x_t+1.)/2. #[-1,1] to [0,1]
 
+        return x_t
+
+    @torch.no_grad()
+    def sample_rectified_flow(self, n_samples, target_label, cfg_scale, device="cuda"):
+        # Start from noise (t=1)
+        x_t = torch.randn((n_samples, self.in_channels, self.image_size, self.image_size)).to(device)
+        
+        if type(target_label) is int:
+            target_label = torch.tensor([target_label for _ in range(n_samples)]).to(device)
+        else:
+            target_label = torch.tensor(target_label).to(device)
+
+        # Euler steps from t=1 to t=0
+        num_steps = self.ddim_timesteps # Use ddim_timesteps for faster generation
+        dt = 1.0 / num_steps
+
+        for i in tqdm(range(num_steps), desc="RF Sampling"):
+            # Current time t (from 1.0 down to dt)
+            t_float = 1.0 - i * dt
+            
+            # Map to model index [0, timesteps-1]
+            t_idx_val = int(t_float * (self.timesteps - 1))
+            t_idx = torch.full((n_samples,), t_idx_val, device=device, dtype=torch.long)
+
+            # Predict velocity
+            uncond_label = torch.full_like(target_label, self.n_classes-1)
+            uncond_pred = self.model(x_t, t_idx, uncond_label)
+            cond_pred = self.model(x_t, t_idx, target_label)
+            
+            pred_v = torch.lerp(uncond_pred, cond_pred, cfg_scale)
+
+            # Update: x_{t-dt} = x_t - v * dt
+            # Since dX_t = v dt, going backwards (dt is negative), here dt is positive magnitude
+            # so x_{prev} = x_t - v * dt
+            x_t = x_t - pred_v * dt
+
+        x_t = (x_t + 1.) / 2.
         return x_t
 
     @torch.no_grad()
