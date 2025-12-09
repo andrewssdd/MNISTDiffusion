@@ -16,7 +16,16 @@ Start default setting training
 ```bash
 python train_mnist.py
 ```
+
+Train a transformer model.
+```bash
+python train_mnist.py --model_type transformer
+```
+
 Feel free to tuning training parameters, type `python train_mnist.py -h` to get help message of arguments.
+
+## Transformer model
+The model breaks the input image into patches. The patch size is very important. If it is too large, the training would never work. Patch size of 2 is a good starting point for MNIST.
 
 ## Sampling
 Load a model checkpoint created previously

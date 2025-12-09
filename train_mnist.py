@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument('--epochs',type = int,default=100)
     parser.add_argument('--ckpt',type = str,help = 'define checkpoint path',default='')
     parser.add_argument('--n_samples_per_target',type = int,help = 'define sampling amounts after every epoch trained per target',default=5)
-    parser.add_argument('--model_base_dim',type = int,help = 'base dim of Unet',default=64)
+    parser.add_argument('--model_base_dim',type = int,help = 'base dim of model',default=64)
     parser.add_argument('--timesteps',type = int,help = 'sampling steps of DDPM',default=1000)
     parser.add_argument('--model_ema_steps',type = int,help = 'ema model evaluation interval',default=10)
     parser.add_argument('--model_ema_decay',type = float,help = 'ema model decay',default=0.995)
@@ -52,6 +52,7 @@ def parse_args():
     parser.add_argument('--uncond_prob',type=float,default=0.1)
     parser.add_argument('--cfg_scale',type=float,default=2.0)
     parser.add_argument('--n_classes',type=int,default=11)
+    parser.add_argument('--model_type',type=str,default='unet',choices=['unet', 'transformer'],help='Model architecture: unet or transformer')
 
     args = parser.parse_args()
 
@@ -67,7 +68,8 @@ def main(args):
                 base_dim=args.model_base_dim,
                 dim_mults=[2,4],
                 n_classes=args.n_classes,
-                uncond_prob=args.uncond_prob).to(device)
+                uncond_prob=args.uncond_prob,
+                model_type=args.model_type).to(device)
 
     #torchvision ema setting
     #https://github.com/pytorch/vision/blob/main/references/classification/train.py#L317
@@ -133,7 +135,7 @@ def main(args):
             samples=model_ema.module.ddim_sampling(len(labels), labels,args.cfg_scale,device=device)
         else:
             raise NotImplementedError()
-        save_image(samples,"results/steps_{:0>8}.png".format(global_steps),nrow=args.n_samples_per_target)
+        save_image(samples,"results/{}_steps_{:0>8}.png".format(args.model_type, global_steps),nrow=args.n_samples_per_target)
 
 if __name__=="__main__":
     args=parse_args()

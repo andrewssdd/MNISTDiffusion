@@ -2,10 +2,11 @@ import torch.nn as nn
 import torch
 import math
 from unet import Unet
+from transformer import Transformer
 from tqdm import tqdm
 
 class MNISTDiffusion(nn.Module):
-    def __init__(self,image_size,in_channels,n_classes=11,time_embedding_dim=256,timesteps=1000,ddim_timesteps=100,base_dim=32,dim_mults= [1, 2, 4, 8],uncond_prob=0.1):
+    def __init__(self,image_size,in_channels,n_classes=11,time_embedding_dim=256,timesteps=1000,ddim_timesteps=100,base_dim=32,dim_mults= [1, 2, 4, 8],uncond_prob=0.1, model_type="unet"):
         super().__init__()
         self.timesteps=timesteps
         self.in_channels=in_channels
@@ -25,7 +26,12 @@ class MNISTDiffusion(nn.Module):
         self.register_buffer("sqrt_alphas_cumprod",torch.sqrt(alphas_cumprod))
         self.register_buffer("sqrt_one_minus_alphas_cumprod",torch.sqrt(1.-alphas_cumprod))
 
-        self.model=Unet(timesteps,time_embedding_dim,in_channels,in_channels,base_dim,dim_mults,n_classes)
+        if model_type == "unet":
+            self.model=Unet(timesteps,time_embedding_dim,in_channels,in_channels,base_dim,dim_mults,n_classes)
+        elif model_type == "transformer":
+            self.model=Transformer(image_size=image_size, in_channels=in_channels, embed_dim=base_dim, n_classes=n_classes, timesteps=timesteps)
+        else:
+            raise ValueError(f"Unknown model_type: {model_type}")
 
     def forward(self,x,noise,target):
         # x:NCHW
