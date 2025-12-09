@@ -5,6 +5,7 @@ A lightweight PyTorch implementation denoising diffusion on NMIST handwritten di
 - DDPM (1000 steps) and DDIM (Fast, 50 steps) samplers.
 - Classifier-Free Guidance (CFG) for generating specific digits.
 - Swappable backbones (UNet & DiT/Transformer).
+- Denoising diffusion and rectified flow training.
 
 
 ## Training
